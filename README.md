@@ -38,12 +38,7 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
   - Retry handling for transient HTTP/IO errors.
 - Localized error output.
   - Errors are shown with localized error extension (language-dependent), while keeping technical details in logs.
-- F3/view behavior fixes.
-  - Virtual result entries are not downloaded.
-  - Prevents unwanted "download error" behavior for list result items.
-- Root action/icon fixes.
-  - `Add search` entry (`Suche hinzufuegen` in German) supports robust path matching.
-  - Plus icon and double-click dialog path handling were corrected.
+
 
 ## `.list` Format
 
