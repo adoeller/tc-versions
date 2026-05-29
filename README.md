@@ -4,6 +4,8 @@
 
 This repository contains an updated FPC/Lazarus-compatible codebase with reliability, parsing, and UX improvements.
 
+Needs OpenSSL-DLLs, i.e. libssl-1_1-x64.dll and such.
+
 ![lists](lists.png)
 ![results](results.png)
 
