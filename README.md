@@ -4,9 +4,6 @@
 
 This repository contains an updated FPC/Lazarus-compatible codebase with reliability, parsing, and UX improvements.
 
-![lists](lists.png)
-![results](results.png)
-
 ## Key Features
 
 - Checks version entries from `.list` files.
@@ -23,6 +20,9 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
   - Return values are evaluated per entry.
 - Configurable connection timeout.
   - New INI key: `ConnectTimeout` in milliseconds (default `5000`).
+- Windows-native HTTPS stack.
+  - HTTP transport now uses WinHTTP instead of OpenSSL sockets.
+  - Removes OpenSSL runtime DLL dependency for HTTPS in this plugin.
 - Optional request logging.
   - New INI keys: `RequestLog` and `RequestLogFile`.
   - Thread-safe logging with timestamp, URL, status, and error code.
@@ -42,18 +42,61 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
 - Localized error output.
   - Errors are shown with localized error extension (language-dependent), while keeping technical details in logs.
 
-
 ## `.list` Format
 
 A standard entry uses six fields:
 
 `Name|URL|StartMarker|LeftMarker|RightMarker|CurrentVersion`
 
+A search-only entry uses three fields:
+
+`Name|URL|Parameters`
+
 Notes:
 
 - Empty lines are ignored.
 - Lines starting with `;` are comments.
 - Marker text can span multiple lines in downloaded HTML source.
+- 3-field entries are shown as `.SEARCH` (localized) and are not fetched for version parsing.
+
+## Status And Error Codes
+
+Result lines are shown like:
+
+- `ProductName (value).NEW`
+- `ProductName (value).UNCHANGED`
+- `ProductName (CODE).ERROR` (localized extension text)
+
+Meaning of common codes inside `(...)`:
+
+- `403`, `404`, `429`, `500`, `502`, `503`, `504`, ...  
+  Direct HTTP status code returned by the server.
+- `PARSE`  
+  The configured markers could not be found/matched in the fetched page.
+- `EMPTY`  
+  Request finished, but no response body was returned.
+- `ABORT`  
+  User canceled while progress dialog was active.
+- `WIN12002`  
+  WinHTTP timeout (`ERROR_WINHTTP_TIMEOUT`).
+- `WIN12007`  
+  Name resolution failed (`ERROR_WINHTTP_NAME_NOT_RESOLVED`).
+- `WIN12029`  
+  Cannot connect (`ERROR_WINHTTP_CANNOT_CONNECT`).
+- `WIN12030`  
+  Connection error (`ERROR_WINHTTP_CONNECTION_ERROR`).
+- `WIN12032`  
+  Request retry required by WinHTTP (`ERROR_WINHTTP_RESEND_REQUEST`).
+- `WIN12005`  
+  Invalid URL (`ERROR_WINHTTP_INVALID_URL`).
+- `ERROR`  
+  Generic fallback when no more specific code is available.
+
+Notes:
+
+- `HTTP`/`EHTTPClient` style errors are from older implementations; current builds use WinHTTP and show HTTP status codes or `WINxxxxx`.
+- The extension after the code is localized (for example `.ERROR` in English, translated labels in other language files).
+- If `RequestLog=1`, technical details are written to `RequestLogFile` with timestamp, URL, status, and error code.
 
 ## Configuration (`versions.ini`)
 
