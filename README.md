@@ -4,6 +4,11 @@
 
 This repository contains an updated FPC/Lazarus-compatible codebase with reliability, parsing, and UX improvements.
 
+
+![lists](lists.png)
+
+![results](results.png)
+
 ## Key Features
 
 - Checks version entries from `.list` files.
