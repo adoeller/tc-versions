@@ -4,7 +4,6 @@
 
 This repository contains an updated FPC/Lazarus-compatible codebase with reliability, parsing, and UX improvements.
 
-
 ![lists](lists.png)
 
 ![results](results.png)
@@ -74,8 +73,8 @@ Result lines are shown like:
 
 Meaning of common codes inside `(...)`:
 
-- `403`, `404`, `429`, `500`, `502`, `503`, `504`, ...  
-  Direct HTTP status code returned by the server.
+- `403 - Forbidden`, `404 - Not Found`, `503 - Service Unavailable`, ...  
+  HTTP status code returned by the server, followed by its standard reason phrase when known.
 - `PARSE`  
   The configured markers could not be found/matched in the fetched page.
 - `EMPTY`  
