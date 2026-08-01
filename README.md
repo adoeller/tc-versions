@@ -43,6 +43,15 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
 - Improved request robustness.
   - Firefox-like User-Agent and browser-like headers.
   - Retry handling for transient HTTP/IO errors.
+- Automatic protection-page handling.
+  - Detects Cloudflare challenge/block pages, Anubis challenges, and simple JavaScript-cookie challenges from HTTP headers and HTML signatures.
+  - Transparently decompresses gzip/deflate HTTP responses before protection detection and marker parsing.
+  - Does not mistake Cloudflare's JavaScript detector embedded in an otherwise complete page for an active challenge.
+  - Keeps WinHTTP as the normal transport and starts Chrome only for a detected protection page.
+  - Uses a Chrome-version-matched normal browser User-Agent instead of the detectable HeadlessChrome identifier.
+  - If an interactive Cloudflare or Anubis challenge remains, temporarily starts a normal Chrome window off-screen and reads its final DOM through a localhost DevTools connection.
+  - Uses a separate persistent Chrome profile so challenge cookies can be reused.
+  - Serializes Chrome calls while regular WinHTTP requests remain parallel.
 - Localized error output.
   - Errors are shown with localized error extension (language-dependent), while keeping technical details in logs.
 
@@ -95,6 +104,12 @@ Meaning of common codes inside `(...)`:
   Invalid URL (`ERROR_WINHTTP_INVALID_URL`).
 - `ERROR`  
   Generic fallback when no more specific code is available.
+- `403 - Forbidden - Cloudflare Protection - Chrome not found`  
+  A Cloudflare protection page was detected, but Chrome is not installed or could not be located.
+- `403 - Forbidden - Cloudflare Protection - Chrome still Cloudflare Protection`  
+  Chrome loaded the page, but Cloudflare still returned a challenge or block page.
+- `200 - OK - Anubis Challenge - Chrome background timeout`  
+  Anubis was detected and the normal, off-screen Chrome fallback did not finish within the configured time.
 
 Notes:
 
@@ -123,6 +138,20 @@ Supported keys:
 - `RequestLogFile`  
   Log filename/path, default `versions_http.log`.  
   Relative paths are resolved against plugin directory.
+- `ChromeFallback`  
+  `1`/`0`, default `1`. Enables the automatic Chrome fallback for detected Cloudflare/Anubis pages.
+- `UseChromeHeadless`  
+  `1`/`0`, default `1`. Enables the first Chrome attempt with `--headless=new` and DOM output.
+- `UseChromeHidden`  
+  `1`/`0`, default `1`. Enables the fallback normal Chrome window, positioned off-screen, for challenges that need a full browser. Set this to `0` to prevent such a Chrome window from being started.
+- `ChromePath`  
+  Optional full path to `chrome.exe`. If empty, the plugin checks the Windows App Paths registry and the standard per-machine/per-user Chrome locations.
+- `ChromeProfileDir`  
+  Optional profile directory used only by the Chrome fallbacks. Default: `%LOCALAPPDATA%\VersionsWFX\ChromeProfile`.
+- `ChromeTimeout`  
+  Integer milliseconds, default `30000`, minimum `5000`. Timeout for each Chrome fallback; the headless attempt uses it additionally as JavaScript virtual-time budget.
+
+The Chrome fallback is intentionally limited to detected protection pages. A regular HTTP error, a normal JavaScript page, or a page merely hosted behind Cloudflare continues to use WinHTTP only. `UseChromeHeadless` and `UseChromeHidden` can be set independently; with both set to `0`, detected protection pages remain WinHTTP errors with the detected protection noted.
 
 ## Build
 
