@@ -5,12 +5,17 @@
 This repository contains an updated FPC/Lazarus-compatible codebase with reliability, parsing, and UX improvements.
 
 ![lists](lists.png)
-
 ![results](results.png)
 
 ## Key Features
 
 - Checks version entries from `.list` files.
+- Checks downloadable files through `Last-Modified` without downloading their
+  body, with a streaming SHA-256 fallback when no usable server timestamp exists.
+- Exposes numeric WFX custom columns for the visible list position and physical
+  source line.
+- Shows `#`, `##`, and `###` list comments as non-executable virtual rows with
+  a comment icon and three visual indentation levels.
 - Supports HTTPS and modern HTTP behavior.
 - Keeps list entry order in output.
 - Shows localized status labels (`NEW`, `UNCHANGED`, `ERROR`, etc.) based on selected language file.
@@ -33,7 +38,10 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
 - Better handling of `.list` files.
   - Empty lines are ignored.
   - Lines starting with `;` are treated as comments and ignored.
-  - In the root view, `.list` file size shows the number of valid entries (non-empty, non-comment).
+  - `.list` files may be organized in arbitrary nested subfolders below the plugin's `Lists` directory; that hierarchy is reflected in `Network Neighborhood > Versions`.
+  - `.list` files beside the plugin DLL remain visible and behave exactly as before.
+  - Outside the `Lists` tree, other plugin subfolders are ignored. Within `Lists`, only folders containing at least one `.list` file directly or recursively are displayed.
+  - The displayed `.list` file size shows the number of valid entries (non-empty, non-comment), including lists in subfolders.
 - Parser improvements for markers.
   - Marker matching works across line breaks.
   - Version text is extracted with original casing preserved.
@@ -50,6 +58,8 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
   - Keeps WinHTTP as the normal transport and starts Chrome only for a detected protection page.
   - Uses a Chrome-version-matched normal browser User-Agent instead of the detectable HeadlessChrome identifier.
   - If an interactive Cloudflare or Anubis challenge remains, temporarily starts a normal Chrome window off-screen and reads its final DOM through a localhost DevTools connection.
+  - Closes that Chrome instance via DevTools after success, timeout, or cancellation; a dedicated Windows job object removes remaining child processes as a fallback.
+  - Bounds each synchronous DevTools WebSocket read to five seconds, so a stalled DOM response cannot bypass the configured Chrome timeout.
   - Uses a separate persistent Chrome profile so challenge cookies can be reused.
   - Serializes Chrome calls while regular WinHTTP requests remain parallel.
 - Localized error output.
@@ -65,12 +75,99 @@ A search-only entry uses three fields:
 
 `Name|URL|Parameters`
 
+A downloadable-file entry also uses six fields, but leaves the first two
+search markers empty:
+
+`Name|URL|||ComparisonValue|DisplayDate`
+
+Example before the first check:
+
+`AFU Rufzeichenliste|https://example.invalid/file-page.html|||checksumme|01.01.2024`
+
+The plugin recognizes this as file mode because `StartMarker` and `LeftMarker`
+are empty. `ComparisonValue` is maintained automatically:
+
+- `last-modified:2026-10-23T06:44:00Z` means the final server response supplied
+  a valid `Last-Modified` header. The full UTC timestamp is compared, while
+  `DisplayDate` contains the readable local list value such as `23.10.2026`.
+- `sha256:<64 hexadecimal characters>` means no usable `Last-Modified` was
+  available. The file is streamed through SHA-256 without keeping the complete
+  file in memory. `DisplayDate` is the date on which that exact checksum was
+  first observed.
+
+File-check sequence:
+
+1. Existing redirects are followed automatically.
+2. Unless the entry is already in SHA-256 mode, the plugin first sends `HEAD`.
+3. If necessary, it retries the header probe with `GET` and
+   `Range: bytes=0-0`; the response body is not downloaded.
+4. A valid `Last-Modified` is stored and compared without downloading the file.
+5. Without `Last-Modified`, the complete file is downloaded once and hashed.
+6. A stored `sha256:` value keeps the entry in SHA-256 mode. To retry
+   `Last-Modified`, clear only `ComparisonValue` while retaining all pipe
+   separators, for example `Name|URL||||23.10.2026`.
+
+The checksum/timestamp and display date are changed only after a successful,
+complete check. Cancellation, timeout, HTTP errors, or an HTML response where a
+file was expected leave the list entry unchanged. When switching comparison
+methods without a comparable previous value, the new value becomes a baseline
+and is shown as unchanged. An existing date can be used for a one-time
+date-only comparison when initializing or returning to `Last-Modified` mode.
+
 Notes:
 
 - Empty lines are ignored.
-- Lines starting with `;` are comments.
+- Lines whose first non-space character is `;` are internal comments and remain
+  hidden.
+- Lines whose first non-space characters are `#`, `##`, or `###` are visible
+  comments. The marker and whitespace immediately following it are omitted in
+  the virtual name: `# Text` is shown as `Text`, `## Text` as `    Text`, and
+  `### Text` as `        Text`. A marker without text is shown as `(comment)`.
+  They never trigger a request, URL, editor, download, or other execution.
+- Characters that are invalid in virtual Windows filenames are replaced only in
+  the displayed comment name. The original `.list` line is saved unchanged.
+- If two visible rows would have the same name, a visible comment receives a
+  source-line suffix such as `[line 12]` to keep its virtual path unique.
 - Marker text can span multiple lines in downloaded HTML source.
 - 3-field entries are shown as `.SEARCH` (localized) and are not fetched for version parsing.
+- Lists can be placed beside the plugin DLL or recursively below `Lists`, for example `Lists\Utilities\NirSoft.list`. The same folders appear below `Network Neighborhood > Versions`; other plugin subfolders are not scanned.
+
+## Custom Columns And Original Order
+
+The WFX plugin exports three content fields:
+
+- `List position` is the consecutive visible position (`1, 2, 3, ...`). Hidden
+  empty lines and `;` comments do not consume a position. Sorting ascending by
+  this field restores the visible order of the `.list`, including all three
+  comment levels.
+- `Source line` is the physical one-based line number in the `.list`. It can
+  contain gaps because empty lines and `;` comments remain hidden.
+- `Name` is the final component of the virtual path passed by Total Commander,
+  including an existing extension. It is available for files and folders and
+  can be added to any custom-column view.
+
+In a Total Commander custom-column view, the fields are available as:
+
+- `[=<fs>.List position]`
+- `[=<fs>.Source line]`
+- `[=<fs>.Name]`
+
+`List position` and `Source line` are empty for the plugin root, folders,
+language entries, and list files themselves. Their values are cached by full
+virtual path, so Total Commander may request them later or in a different order
+without changing the reported position. `Name` is available for every non-root
+virtual item.
+
+The plugin also supplies a default WFX column view. Total Commander contributes
+its fixed name and extension columns; the plugin view adds `List position` and
+`Source line`. The separate plugin field `Name` is not added there to avoid a
+duplicate name column. When entering the plugin, Total Commander switches to
+the view automatically if **Use plugin columns** is enabled in Total
+Commander's custom-column settings. The plugin does not modify `wincmd.ini`;
+disabling that Total Commander option keeps the user's selected standard or
+custom view.
+Both ANSI and Unicode default-view callbacks are exported; current Windows
+versions of Total Commander use the Unicode callback.
 
 ## Status And Error Codes
 
@@ -86,6 +183,9 @@ Meaning of common codes inside `(...)`:
   HTTP status code returned by the server, followed by its standard reason phrase when known.
 - `PARSE`  
   The configured markers could not be found/matched in the fetched page.
+- `FILE - HTML response`  
+  A file-check entry returned an HTML page instead of a downloadable file. The
+  stored comparison value is not changed.
 - `EMPTY`  
   Request finished, but no response body was returned.
 - `ABORT`  
@@ -149,7 +249,7 @@ Supported keys:
 - `ChromeProfileDir`  
   Optional profile directory used only by the Chrome fallbacks. Default: `%LOCALAPPDATA%\VersionsWFX\ChromeProfile`.
 - `ChromeTimeout`  
-  Integer milliseconds, default `30000`, minimum `5000`. Timeout for each Chrome fallback; the headless attempt uses it additionally as JavaScript virtual-time budget.
+  Integer milliseconds, default `10000`, minimum `5000`. Timeout for each Chrome fallback; the headless attempt uses it additionally as JavaScript virtual-time budget.
 
 The Chrome fallback is intentionally limited to detected protection pages. A regular HTTP error, a normal JavaScript page, or a page merely hosted behind Cloudflare continues to use WinHTTP only. `UseChromeHeadless` and `UseChromeHidden` can be set independently; with both set to `0`, detected protection pages remain WinHTTP errors with the detected protection noted.
 
@@ -173,3 +273,4 @@ Typical output binary:
 - Later maintenance: ProgMan13
 
 See `readme.txt` for original historical notes and legacy changelog.
+nly
