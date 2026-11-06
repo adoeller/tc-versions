@@ -6,6 +6,7 @@ This repository contains an updated FPC/Lazarus-compatible codebase with reliabi
 
 ![lists](lists.png)
 ![results](results.png)
+![changesandedit](changesandedit.png)
 
 ## Key Features
 
